@@ -36,7 +36,6 @@ def get_all_passes():
                 return {"data": results, "source": "cloud"}
     except Exception as e:
         logger.warning(f"Error fetching passes from DB: {e}")
-    # Fallback store
     return {"data": mock_store.get_all_passes(), "source": "fallback"}
 
 @router.get("/{pass_number}")
@@ -60,7 +59,41 @@ def get_pass_by_number(pass_number: str):
 @router.post("")
 @router.post("/")
 def create_pass(req: CreatePassRequest):
-    """Issue a new official trekking pass connecting Trekker, Trail, and Ranger Station in graph."""
+    """
+    Issue a new official trekking pass connecting Trekker, Trail, and Ranger Station in graph.
+    Enforces overlap check: a trekker cannot hold multiple active permits for overlapping dates.
+    """
+    # 1. Duplicate & Overlap Date Validation
+    try:
+        if db_manager.get_driver():
+            overlap_check = db_manager.run_query(
+                queries.QUERY_CHECK_PERMIT_OVERLAP,
+                {
+                    "trekker_id": req.trekker_id,
+                    "valid_from": req.valid_from,
+                    "valid_to": req.valid_to
+                }
+            )
+            if overlap_check and len(overlap_check) > 0:
+                conflict = overlap_check[0]
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Duplicate Booking Conflict: Trekker already holds active permit ({conflict['pass_number']}) valid from {conflict['valid_from']} to {conflict['valid_to']}. Multiple permits cannot be booked for overlapping dates."
+                )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Overlap check notice: {e}")
+
+    # Fallback store overlap validation
+    existing = [p for p in mock_store.passes if p["trekker_id"] == req.trekker_id and p["status"] == "ACTIVE"]
+    for p in existing:
+        if p["valid_from"] <= req.valid_to and p["valid_to"] >= req.valid_from:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Duplicate Booking Conflict: Trekker already holds active permit ({p['pass_number']}) valid from {p['valid_from']} to {p['valid_to']}. Multiple permits cannot be booked for overlapping dates."
+            )
+
     pass_id = f"pass-{uuid.uuid4().hex[:8]}"
     pass_number = f"TP-2026-{uuid.uuid4().hex[:4].upper()}"
     created_at = datetime.utcnow().isoformat()
@@ -79,8 +112,17 @@ def create_pass(req: CreatePassRequest):
                 "station_id": req.station_id or "ranger-1",
                 "created_at": created_at
             }
-            res = db_manager.execute_write(queries.QUERY_CREATE_PASS, params)
-            return {"message": "Pass issued successfully", "data": res[0] if res else params, "source": "cloud"}
+            db_manager.execute_write(queries.QUERY_CREATE_PASS, params)
+            # Query full created pass with trekker & trail info for immediate confirmation view
+            full_pass_res = db_manager.run_query(queries.QUERY_GET_PASS_BY_NUMBER, {"pass_number": pass_number})
+            if full_pass_res:
+                return {
+                    "message": "Permit authorized successfully",
+                    "data": full_pass_res[0],
+                    "source": "cloud"
+                }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating pass in DB: {e}")
 
@@ -94,7 +136,8 @@ def create_pass(req: CreatePassRequest):
         insurance_id=req.emergency_insurance_id or "",
         station_id=req.station_id
     )
-    return {"message": "Pass issued successfully", "data": created, "source": "fallback"}
+    full_fallback = next((p for p in mock_store.get_all_passes() if p["id"] == created["id"]), created)
+    return {"message": "Permit authorized successfully", "data": full_fallback, "source": "fallback"}
 
 @router.patch("/{pass_id}/status")
 @router.patch("/{pass_id}/status/")

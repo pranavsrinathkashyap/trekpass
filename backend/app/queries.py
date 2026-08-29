@@ -29,6 +29,14 @@ RETURN t.id AS id, t.name AS name, t.email AS email, t.country AS country,
        t.experience_level AS experience_level, t.emergency_contact AS emergency_contact
 """
 
+# Pass Overlap Check Query
+QUERY_CHECK_PERMIT_OVERLAP = """
+MATCH (t:Trekker {id: $trekker_id})-[:HOLDS_PASS]->(p:TrekPass {status: 'ACTIVE'})
+WHERE p.valid_from <= $valid_to AND p.valid_to >= $valid_from
+RETURN p.pass_number AS pass_number, p.valid_from AS valid_from, p.valid_to AS valid_to
+LIMIT 1
+"""
+
 # Pass Queries
 QUERY_GET_ALL_PASSES = """
 MATCH (p:TrekPass)
@@ -183,7 +191,7 @@ ORDER BY total_distance_km ASC
 LIMIT 5
 """
 
-# EMERGENCY EVACUATION ROUTE: Fastest egress to nearest Medical Station
+# EMERGENCY EVACUATION ROUTE
 QUERY_EMERGENCY_EVACUATION_ROUTE = """
 MATCH p = (start:Checkpoint {id: $current_checkpoint_id})-[:LEADS_TO*1..10]->(safe:Checkpoint {has_medical: true})
 WHERE ALL(rel IN relationships(p) WHERE rel.is_passable = true)
