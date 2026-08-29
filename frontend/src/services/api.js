@@ -21,6 +21,7 @@ export const fetchAllPasses = async () => (await api.get('/passes')).data;
 export const fetchPassByNumber = async (passNumber) => (await api.get(`/passes/${passNumber}`)).data;
 export const createPass = async (payload) => (await api.post('/passes', payload)).data;
 export const updatePassStatus = async (passId, status) => (await api.patch(`/passes/${passId}/status`, { status })).data;
+export const deletePass = async (passId) => (await api.delete(`/passes/${passId}`)).data;
 
 // Trails & Navigation
 export const fetchTrails = async () => (await api.get('/trails')).data;
@@ -35,6 +36,7 @@ export const toggleHazard = async (fromId, toId, isPassable) =>
 // Trekkers & Safety
 export const fetchTrekkers = async () => (await api.get('/trekkers')).data;
 export const registerTrekker = async (payload) => (await api.post('/trekkers', payload)).data;
+export const deleteTrekker = async (trekkerId) => (await api.delete(`/trekkers/${trekkerId}`)).data;
 export const checkinTrekker = async (trekkerId, checkpointId, status = 'CHECKED_IN') => 
   (await api.post('/trekkers/checkin', { trekker_id: trekkerId, checkpoint_id: checkpointId, status })).data;
 export const fetchTrekkerSafetyNetwork = async (trekkerId) => 

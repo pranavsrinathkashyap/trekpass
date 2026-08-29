@@ -9,10 +9,7 @@ import {
   AlertCircle, 
   CheckCircle2, 
   QrCode, 
-  Radio, 
-  Phone,
-  ArrowRight,
-  Sparkles
+  ArrowRight
 } from 'lucide-react';
 import { fetchTrekkers, fetchTrails, createPass } from '../services/api';
 
@@ -82,7 +79,22 @@ export default function PassModal({ isOpen, onClose, onPassCreated }) {
     try {
       const res = await createPass(formData);
       const createdData = res.data || {};
-      setConfirmedPass(createdData);
+      
+      const selectedTrekker = trekkers.find((t) => t.id === formData.trekker_id) || {};
+      const selectedTrail = trails.find((tr) => tr.id === formData.trail_id) || {};
+
+      const fullConfirmation = {
+        id: createdData.id || `pass-${Math.random().toString(36).substring(2, 9)}`,
+        pass_number: createdData.pass_number || 'TP-2026-ACTIVE',
+        status: createdData.status || 'ACTIVE',
+        pass_type: createdData.pass_type || formData.pass_type,
+        valid_from: createdData.valid_from || formData.valid_from,
+        valid_to: createdData.valid_to || formData.valid_to,
+        trekker: createdData.trekker?.name ? createdData.trekker : selectedTrekker,
+        permitted_trails: createdData.permitted_trails?.length ? createdData.permitted_trails : [selectedTrail],
+      };
+
+      setConfirmedPass(fullConfirmation);
       onPassCreated();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to issue permit');
@@ -122,10 +134,10 @@ export default function PassModal({ isOpen, onClose, onPassCreated }) {
           </button>
         </div>
 
-        {/* Confirmation View (When Permit is Issued) */}
+        {/* Confirmation View */}
         {confirmedPass ? (
           <div className="p-6 space-y-5 animate-fade-in">
-            <div className="rounded-2xl bg-gradient-to-br from-teal-900 to-slate-950 p-6 text-white shadow-lg space-y-4">
+            <div className="rounded-2xl bg-gradient-to-br from-teal-900 via-slate-900 to-slate-950 p-6 text-white shadow-lg space-y-4">
               <div className="flex items-center justify-between border-b border-white/15 pb-3">
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-teal-300 font-mono">
@@ -134,31 +146,35 @@ export default function PassModal({ isOpen, onClose, onPassCreated }) {
                   <h4 className="text-xl font-extrabold text-white font-mono">{confirmedPass.pass_number}</h4>
                 </div>
                 <span className="rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-bold text-emerald-300 border border-emerald-500/30">
-                  ACTIVE
+                  {confirmedPass.status}
                 </span>
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <p className="text-[10px] text-teal-200 uppercase font-semibold">Permit Holder</p>
-                  <p className="font-bold text-white mt-0.5">{confirmedPass.trekker?.name || 'Trekker'}</p>
-                  <p className="text-[11px] text-slate-300">{confirmedPass.trekker?.country} • {confirmedPass.trekker?.experience_level}</p>
+                  <p className="font-bold text-white mt-0.5 text-sm">{confirmedPass.trekker?.name || 'Trekker'}</p>
+                  <p className="text-[11px] text-slate-300">
+                    {confirmedPass.trekker?.country || 'International'} • {confirmedPass.trekker?.experience_level || 'Hiker'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[10px] text-teal-200 uppercase font-semibold">Authorized Route</p>
-                  <p className="font-bold text-white mt-0.5 truncate">{confirmedPass.permitted_trails?.[0]?.name || 'Everest Route'}</p>
-                  <p className="text-[11px] text-amber-300 font-mono">{confirmedPass.pass_type} Tier</p>
+                  <p className="font-bold text-white mt-0.5 text-sm truncate">
+                    {confirmedPass.permitted_trails?.[0]?.name || 'Everest Base Camp Route'}
+                  </p>
+                  <p className="text-[11px] text-amber-300 font-mono font-semibold">{confirmedPass.pass_type} Tier</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 rounded-xl bg-white/10 p-3 text-xs border border-white/10">
+              <div className="grid grid-cols-2 gap-3 rounded-xl bg-white/10 p-3 text-xs border border-white/15">
                 <div>
-                  <span className="text-[10px] text-slate-300">Valid From:</span>
-                  <p className="font-bold text-emerald-300 font-mono">{confirmedPass.valid_from}</p>
+                  <span className="text-[10px] text-slate-300 block">Valid From:</span>
+                  <span className="font-bold text-emerald-300 font-mono text-sm block mt-0.5">{confirmedPass.valid_from}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-300">Valid To:</span>
-                  <p className="font-bold text-amber-300 font-mono">{confirmedPass.valid_to}</p>
+                  <span className="text-[10px] text-slate-300 block">Valid To:</span>
+                  <span className="font-bold text-amber-300 font-mono text-sm block mt-0.5">{confirmedPass.valid_to}</span>
                 </div>
               </div>
 

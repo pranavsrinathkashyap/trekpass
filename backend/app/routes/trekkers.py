@@ -90,6 +90,26 @@ def register_trekker(req: CreateTrekkerRequest):
     mock_store.trekkers.insert(0, new_t)
     return {"message": "Trekker registered successfully", "data": new_t, "source": "fallback"}
 
+@router.delete("/{trekker_id}")
+@router.delete("/{trekker_id}/")
+def delete_trekker(trekker_id: str):
+    """Safely delete a trekker and detach related passes from graph."""
+    try:
+        if db_manager.get_driver():
+            cypher = """
+            MATCH (t:Trekker {id: $trekker_id})
+            OPTIONAL MATCH (t)-[:HOLDS_PASS]->(p:TrekPass)
+            DETACH DELETE p, t
+            """
+            db_manager.execute_write(cypher, {"trekker_id": trekker_id})
+            return {"message": f"Trekker {trekker_id} and associated permits deleted", "source": "cloud"}
+    except Exception as e:
+        logger.error(f"Error deleting trekker: {e}")
+
+    mock_store.trekkers = [t for t in mock_store.trekkers if t["id"] != trekker_id]
+    mock_store.passes = [p for p in mock_store.passes if p.get("trekker_id") != trekker_id]
+    return {"message": f"Trekker {trekker_id} deleted", "source": "fallback"}
+
 @router.post("/checkin")
 @router.post("/checkin/")
 def checkin_at_checkpoint(req: CheckinRequest):
