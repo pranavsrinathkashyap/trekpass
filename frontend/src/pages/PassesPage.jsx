@@ -76,6 +76,10 @@ export default function PassesPage() {
       return;
     }
     setDeletingId(passId);
+    // Optimistically remove from state immediately
+    setPasses((prev) => prev.filter((p) => p.id !== passId && p.pass_number !== passNumber));
+    setFilteredPasses((prev) => prev.filter((p) => p.id !== passId && p.pass_number !== passNumber));
+    
     try {
       await deletePass(passId);
       setDeleteNotice(`Permit ${passNumber} deleted successfully.`);
@@ -83,6 +87,7 @@ export default function PassesPage() {
       loadPasses();
     } catch (err) {
       console.error('Delete failed:', err);
+      loadPasses();
     } finally {
       setDeletingId(null);
     }
@@ -240,9 +245,9 @@ export default function PassesPage() {
                     onClick={() => handleDeletePass(p.id, p.pass_number)}
                     disabled={deletingId === p.id}
                     title="Delete permit"
-                    className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
+                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4 text-rose-500 hover:text-rose-700" />
                   </button>
                 </div>
               </div>

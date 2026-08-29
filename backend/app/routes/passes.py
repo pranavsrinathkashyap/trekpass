@@ -93,7 +93,7 @@ def create_pass(req: CreatePassRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.warning(f"Overlap check query error: {e}")
+        logger.warning(f"Overlap check query notice: {e}")
 
     # Fallback store overlap validation
     existing = [p for p in mock_store.passes if p["trekker_id"] == req.trekker_id and p["status"] == "ACTIVE"]
@@ -156,7 +156,8 @@ def delete_pass(pass_id: str):
     try:
         if db_manager.get_driver():
             cypher = """
-            MATCH (p:TrekPass {id: $pass_id})
+            MATCH (p:TrekPass)
+            WHERE p.id = $pass_id OR p.pass_number = $pass_id
             DETACH DELETE p
             """
             db_manager.execute_write(cypher, {"pass_id": pass_id})
@@ -164,7 +165,7 @@ def delete_pass(pass_id: str):
     except Exception as e:
         logger.error(f"Error deleting pass: {e}")
 
-    mock_store.passes = [p for p in mock_store.passes if p["id"] != pass_id]
+    mock_store.passes = [p for p in mock_store.passes if p["id"] != pass_id and p["pass_number"] != pass_id]
     return {"message": f"Permit {pass_id} safely deleted", "source": "fallback"}
 
 @router.patch("/{pass_id}/status")
