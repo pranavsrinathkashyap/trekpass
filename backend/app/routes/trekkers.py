@@ -3,10 +3,13 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional, List
 import uuid
+import logging
 
 from app.db import db_manager
 from app import queries
 from app.mock_data import mock_store
+
+logger = logging.getLogger("trekpass.trekkers")
 
 router = APIRouter(prefix="/trekkers", tags=["Trekkers & Safety Registry"])
 
@@ -22,6 +25,7 @@ class CheckinRequest(BaseModel):
     checkpoint_id: str
     status: str = Field(default="CHECKED_IN", description="CHECKED_IN, RESTING, or MEDICAL_ATTENTION")
 
+@router.get("")
 @router.get("/")
 def get_all_trekkers():
     """Retrieve all registered trekkers in the system."""
@@ -40,11 +44,13 @@ def get_all_trekkers():
             ORDER BY t.name ASC
             """
             results = db_manager.run_query(cypher)
-            return {"data": results, "source": "cloud"}
-    except Exception:
-        pass
-    return {"data": mock_store.trekkers, "source": "standalone"}
+            if results:
+                return {"data": results, "source": "cloud"}
+    except Exception as e:
+        logger.warning(f"Error fetching trekkers from database: {e}")
+    return {"data": mock_store.trekkers, "source": "fallback"}
 
+@router.post("")
 @router.post("/")
 def register_trekker(req: CreateTrekkerRequest):
     """Register a new trekker with alpine emergency credentials."""
@@ -69,7 +75,7 @@ def register_trekker(req: CreateTrekkerRequest):
                 "source": "cloud"
             }
     except Exception as e:
-        pass
+        logger.error(f"Error creating trekker in DB: {e}")
 
     # Fallback in-memory
     new_t = {
@@ -82,14 +88,12 @@ def register_trekker(req: CreateTrekkerRequest):
         "last_known_location": "Lukla Gateway (2,860m)"
     }
     mock_store.trekkers.insert(0, new_t)
-    return {"message": "Trekker registered successfully", "data": new_t, "source": "standalone"}
+    return {"message": "Trekker registered successfully", "data": new_t, "source": "fallback"}
 
 @router.post("/checkin")
+@router.post("/checkin/")
 def checkin_at_checkpoint(req: CheckinRequest):
-    """
-    Record real-time trekker check-in at a mountain checkpoint.
-    Updates the LAST_SEEN_AT relationship for search & rescue tracking.
-    """
+    """Record real-time trekker check-in at a mountain checkpoint."""
     timestamp = datetime.utcnow().isoformat()
     try:
         if db_manager.get_driver():
@@ -103,33 +107,28 @@ def checkin_at_checkpoint(req: CheckinRequest):
                 }
             )
             return {"message": "Check-in recorded successfully", "data": results[0] if results else {}, "source": "cloud"}
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Error checking in: {e}")
 
     res = mock_store.checkin_trekker(req.trekker_id, req.checkpoint_id)
-    return {"message": "Check-in recorded successfully", "data": res, "source": "standalone"}
+    return {"message": "Check-in recorded successfully", "data": res, "source": "fallback"}
 
 @router.get("/{trekker_id}/safety-network")
+@router.get("/{trekker_id}/safety-network/")
 def get_trekker_safety_network(trekker_id: str):
-    """
-    Traverses multi-degree companion network (:TREKKING_WITH*1..2)
-    and discovers responsible Ranger Stations monitoring permitted checkpoints.
-    """
+    """Traverse companion network & alert ranger stations."""
     try:
         if db_manager.get_driver():
             results = db_manager.run_query(
                 queries.QUERY_GET_TREKKER_NETWORK,
                 {"trekker_id": trekker_id}
             )
-            if results:
+            if results and results[0].get("id"):
                 return {"data": results[0], "source": "cloud"}
-            raise HTTPException(status_code=404, detail="Trekker not found")
-    except HTTPException:
-        raise
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Error fetching network: {e}")
 
     res = mock_store.get_trekker_network(trekker_id)
     if not res:
         raise HTTPException(status_code=404, detail="Trekker not found")
-    return {"data": res, "source": "standalone"}
+    return {"data": res, "source": "fallback"}

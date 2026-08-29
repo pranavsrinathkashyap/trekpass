@@ -1,36 +1,39 @@
 from fastapi import APIRouter
+import logging
 from app.db import db_manager
 from app import queries
 from app.mock_data import mock_store
 
+logger = logging.getLogger("trekpass.stats")
+
 router = APIRouter(prefix="/stats", tags=["Analytics & Capacity"])
 
 @router.get("/dashboard")
+@router.get("/dashboard/")
 def get_dashboard_stats():
     """Retrieve high-level system metrics, active pass counts, and trail safety statuses."""
     try:
         if db_manager.get_driver():
             results = db_manager.run_query(queries.QUERY_DASHBOARD_STATS)
-            if results and "stats" in results[0]:
-                return {"data": results[0]["stats"], "source": "cognoDB"}
-    except Exception:
-        pass
-    return {"data": mock_store.get_stats(), "source": "standalone_engine"}
+            if results and "stats" in results[0] and results[0]["stats"].get("total_checkpoints", 0) > 0:
+                return {"data": results[0]["stats"], "source": "cloud"}
+    except Exception as e:
+        logger.warning(f"Error fetching stats: {e}")
+    return {"data": mock_store.get_stats(), "source": "fallback"}
 
 @router.get("/trail-capacity")
+@router.get("/trail-capacity/")
 def get_trail_capacity_metrics():
-    """
-    TRAIL CAPACITY & OCCUPANCY GRAPH QUERY:
-    Calculates active pass density against environmental capacity constraints.
-    """
+    """Calculates active pass density against environmental capacity constraints."""
     try:
         if db_manager.get_driver():
             results = db_manager.run_query(queries.QUERY_TRAIL_CAPACITY_METRICS)
-            return {"data": results, "source": "cognoDB"}
-    except Exception:
-        pass
+            if results:
+                return {"data": results, "source": "cloud"}
+    except Exception as e:
+        logger.warning(f"Error fetching capacity metrics: {e}")
     
-    # Mock capacity calculation
+    # Fallback capacity calculation
     trails = mock_store.trails
     passes = mock_store.passes
     out = []
@@ -47,4 +50,4 @@ def get_trail_capacity_metrics():
             "active_trekkers": active_t,
             "capacity_utilization_pct": pct
         })
-    return {"data": out, "source": "standalone_engine"}
+    return {"data": out, "source": "fallback"}

@@ -1,7 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
 from pathlib import Path
 import time
@@ -23,6 +23,18 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing TrekPass Backend...")
     health = db_manager.check_health()
     logger.info(f"Database status: {health['status']} (URI: {health.get('uri')})")
+    
+    # Auto-seed database if connected but empty
+    try:
+        if db_manager.get_driver():
+            res = db_manager.run_query("MATCH (c:Checkpoint) RETURN count(c) AS count")
+            if res and res[0].get("count", 0) == 0:
+                logger.info("Database is empty on startup. Automatically seeding Himalayan dataset...")
+                from seed import run_seed
+                run_seed()
+    except Exception as e:
+        logger.warning(f"Auto-seed check: {e}")
+        
     yield
     logger.info("Shutting down TrekPass Backend...")
     db_manager.close()
@@ -51,6 +63,7 @@ app.include_router(stats.router, prefix="/api")
 app.include_router(graph.router, prefix="/api")
 
 @app.get("/api/health")
+@app.get("/api/health/")
 def get_health():
     """System and database connectivity diagnostics."""
     start_time = time.time()
@@ -71,19 +84,22 @@ def get_health():
     }
 
 @app.post("/api/seed")
+@app.post("/api/seed/")
 def trigger_seed():
     """Trigger seeding of graph database with Himalayan trail dataset."""
     from seed import run_seed
     success, message = run_seed()
     return {"success": success, "message": message}
 
-# Serve Built React Frontend (Unified Single Deployment Support)
+# Serve Built React Frontend
 dist_dir = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 if dist_dir.exists():
     app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="assets")
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
+        if full_path.startswith("api/"):
+            return JSONResponse(status_code=404, content={"detail": "API endpoint not found"})
         file_path = dist_dir / full_path
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
